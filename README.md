@@ -3,12 +3,12 @@
 Shows how much of your Claude plan you have used, right in the Mac menu bar.
 
 ```
-9% (14:30) · 68% · 100%
+9% (2h) · 68% · 100%
 ```
 
 From left to right:
 
-1. Your current 5-hour session, and the time it resets
+1. Your current 5-hour session, and the time left until it resets
 2. Your weekly limit
 3. Your weekly Fable limit, if your plan has one
 

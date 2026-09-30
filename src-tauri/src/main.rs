@@ -2,7 +2,11 @@ mod credentials;
 mod tray;
 mod usage;
 
-use std::{sync::mpsc, thread, time::Duration};
+use std::{
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -11,6 +15,8 @@ use tauri::{
 };
 
 const POLL_INTERVAL: Duration = Duration::from_secs(120);
+// The countdown shows minutes, so redraw more often than the API is polled.
+const RENDER_INTERVAL: Duration = Duration::from_secs(60);
 
 fn main() {
     tauri::Builder::default()
@@ -41,9 +47,16 @@ fn main() {
             thread::spawn(move || {
                 let client = reqwest::blocking::Client::new();
                 let mut usage_tray = tray::UsageTray::new(tray);
+                let mut last_fetch: Option<Instant> = None;
                 loop {
-                    usage_tray.render(usage::fetch_usage(&client));
-                    let _ = refresh_rx.recv_timeout(POLL_INTERVAL);
+                    if last_fetch.is_none_or(|fetched| fetched.elapsed() >= POLL_INTERVAL) {
+                        usage_tray.update(usage::fetch_usage(&client));
+                        last_fetch = Some(Instant::now());
+                    }
+                    usage_tray.render();
+                    if refresh_rx.recv_timeout(RENDER_INTERVAL).is_ok() {
+                        last_fetch = None;
+                    }
                 }
             });
             Ok(())

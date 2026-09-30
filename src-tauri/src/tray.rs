@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{DateTime, Utc};
 use tauri::tray::TrayIcon;
 
 use crate::usage::{Usage, UsageWindow};
@@ -12,10 +12,20 @@ fn window_percent(window: &Option<UsageWindow>) -> String {
     percent(window.as_ref().and_then(|w| w.utilization))
 }
 
+fn time_left(resets_at: DateTime<Utc>) -> String {
+    let seconds = (resets_at - Utc::now()).num_seconds().max(0) as u64;
+    let minutes = seconds.div_ceil(60);
+    if minutes < 60 {
+        format!("{minutes}m")
+    } else {
+        format!("{}h", minutes.div_ceil(60))
+    }
+}
+
 fn five_hour(window: &Option<UsageWindow>) -> String {
     let used = window_percent(window);
     match window.as_ref().and_then(|w| w.resets_at) {
-        Some(resets_at) => format!("{used} ({})", resets_at.with_timezone(&Local).format("%H:%M")),
+        Some(resets_at) => format!("{used} ({})", time_left(resets_at)),
         None => used,
     }
 }
@@ -34,30 +44,37 @@ fn format_usage(usage: &Usage) -> String {
 
 pub struct UsageTray {
     tray: TrayIcon,
-    last_title: Option<String>,
+    usage: Option<Usage>,
+    error: Option<String>,
 }
 
 impl UsageTray {
     pub fn new(tray: TrayIcon) -> Self {
-        Self { tray, last_title: None }
+        Self {
+            tray,
+            usage: None,
+            error: None,
+        }
     }
 
-    pub fn render(&mut self, usage: Result<Usage, String>) {
-        match usage {
+    pub fn update(&mut self, result: Result<Usage, String>) {
+        match result {
             Ok(usage) => {
-                let title = format_usage(&usage);
-                let _ = self.tray.set_title(Some(&title));
-                let _ = self.tray.set_tooltip(None::<&str>);
-                self.last_title = Some(title);
+                self.usage = Some(usage);
+                self.error = None;
             }
-            Err(error) => {
-                let title = self
-                    .last_title
-                    .as_ref()
-                    .map_or("Claude ⚠".into(), |title| format!("{title} ⚠"));
-                let _ = self.tray.set_title(Some(title));
-                let _ = self.tray.set_tooltip(Some(error));
-            }
+            Err(error) => self.error = Some(error),
         }
+    }
+
+    pub fn render(&self) {
+        let title = match (&self.usage, &self.error) {
+            (Some(usage), None) => format_usage(usage),
+            (Some(usage), Some(_)) => format!("{} ⚠", format_usage(usage)),
+            (None, Some(_)) => "Claude ⚠".into(),
+            (None, None) => "Claude …".into(),
+        };
+        let _ = self.tray.set_title(Some(title));
+        let _ = self.tray.set_tooltip(self.error.as_deref());
     }
 }
