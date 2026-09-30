@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{de::IgnoredAny, Deserialize};
 
 use crate::credentials;
 
@@ -27,24 +27,15 @@ pub struct Limit {
 
 #[derive(Deserialize)]
 struct LimitScope {
-    model: Option<LimitModel>,
-}
-
-#[derive(Deserialize)]
-struct LimitModel {
-    display_name: Option<String>,
+    model: Option<IgnoredAny>,
 }
 
 impl Usage {
-    pub fn model_limits(&self) -> impl Iterator<Item = (&str, &Limit)> {
-        self.limits
-            .iter()
-            .flatten()
-            .filter(|limit| limit.kind == "weekly_scoped")
-            .filter_map(|limit| {
-                let name = limit.scope.as_ref()?.model.as_ref()?.display_name.as_deref()?;
-                Some((name, limit))
-            })
+    pub fn model_limits(&self) -> impl Iterator<Item = &Limit> {
+        self.limits.iter().flatten().filter(|limit| {
+            limit.kind == "weekly_scoped"
+                && limit.scope.as_ref().is_some_and(|scope| scope.model.is_some())
+        })
     }
 }
 

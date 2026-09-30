@@ -22,12 +22,12 @@ fn five_hour(window: &Option<UsageWindow>) -> String {
 
 fn format_usage(usage: &Usage) -> String {
     let mut title = format!(
-        "5h {} · 7d {}",
+        "{} · {}",
         five_hour(&usage.five_hour),
         window_percent(&usage.seven_day)
     );
-    for (name, limit) in usage.model_limits() {
-        title.push_str(&format!(" · {name} {}", percent(limit.percent)));
+    for limit in usage.model_limits() {
+        title.push_str(&format!(" · {}", percent(limit.percent)));
     }
     title
 }
