@@ -37,6 +37,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Claude Usage v__VERSION__
-          releaseDraft: true
+          releaseDraft: false
           tauriScript: pnpm tauri
           args: --target universal-apple-darwin --bundles app,dmg

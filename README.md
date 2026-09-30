@@ -42,5 +42,3 @@ You need [Rust](https://rustup.rs), Node.js and [pnpm](https://pnpm.io).
 pnpm install
 pnpm tauri build
 ```
-
-To publish a new version, bump the version in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a tag like `v0.2.0`. GitHub builds the `.dmg` and creates a draft release.
