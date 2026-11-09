@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use tauri::tray::TrayIcon;
 
-use crate::usage::{Usage, UsageWindow};
+use crate::usage::{FetchError, Usage, UsageWindow};
 
 // Rounding down so 99.6% never shows as 100% while quota remains.
 fn percent(value: Option<f64>) -> String {
@@ -42,10 +42,20 @@ fn format_usage(usage: &Usage) -> String {
     title
 }
 
+fn describe(error: &FetchError) -> String {
+    match error {
+        FetchError::RateLimited {
+            retry_at: Some(retry_at),
+        } => format!("Rate limited, retrying in {}", time_left(*retry_at)),
+        FetchError::RateLimited { retry_at: None } => "Rate limited".into(),
+        FetchError::Failed(message) => message.clone(),
+    }
+}
+
 pub struct UsageTray {
     tray: TrayIcon,
     usage: Option<Usage>,
-    error: Option<String>,
+    error: Option<FetchError>,
 }
 
 impl UsageTray {
@@ -57,7 +67,7 @@ impl UsageTray {
         }
     }
 
-    pub fn update(&mut self, result: Result<Usage, String>) {
+    pub fn update(&mut self, result: Result<Usage, FetchError>) {
         match result {
             Ok(usage) => {
                 self.usage = Some(usage);
@@ -75,6 +85,6 @@ impl UsageTray {
             (None, None) => "Claude …".into(),
         };
         let _ = self.tray.set_title(Some(title));
-        let _ = self.tray.set_tooltip(self.error.as_deref());
+        let _ = self.tray.set_tooltip(self.error.as_ref().map(describe));
     }
 }

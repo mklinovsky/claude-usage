@@ -8,11 +8,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::Utc;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     ActivationPolicy,
 };
+use usage::FetchError;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(120);
 // The countdown shows minutes, so redraw more often than the API is polled.
@@ -47,15 +49,28 @@ fn main() {
             thread::spawn(move || {
                 let client = reqwest::blocking::Client::new();
                 let mut usage_tray = tray::UsageTray::new(tray);
-                let mut last_fetch: Option<Instant> = None;
+                let mut next_fetch = Instant::now();
+                let mut not_before = next_fetch;
                 loop {
-                    if last_fetch.is_none_or(|fetched| fetched.elapsed() >= POLL_INTERVAL) {
-                        usage_tray.update(usage::fetch_usage(&client));
-                        last_fetch = Some(Instant::now());
+                    if Instant::now() >= next_fetch {
+                        let result = usage::fetch_usage(&client);
+                        next_fetch = match &result {
+                            Err(FetchError::RateLimited {
+                                retry_at: Some(retry_at),
+                            }) => {
+                                let wait = (*retry_at - Utc::now()).to_std().unwrap_or_default();
+                                not_before = Instant::now() + wait;
+                                not_before
+                            }
+                            _ => Instant::now() + POLL_INTERVAL,
+                        };
+                        usage_tray.update(result);
                     }
                     usage_tray.render();
-                    if refresh_rx.recv_timeout(RENDER_INTERVAL).is_ok() {
-                        last_fetch = None;
+                    let timeout =
+                        RENDER_INTERVAL.min(next_fetch.saturating_duration_since(Instant::now()));
+                    if refresh_rx.recv_timeout(timeout).is_ok() {
+                        next_fetch = not_before;
                     }
                 }
             });

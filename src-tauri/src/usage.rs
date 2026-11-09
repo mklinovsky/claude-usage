@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
+use reqwest::{blocking::Response, header::RETRY_AFTER, StatusCode};
 use serde::{de::IgnoredAny, Deserialize};
 
 use crate::credentials;
@@ -39,14 +40,35 @@ impl Usage {
     }
 }
 
-pub fn fetch_usage(client: &reqwest::blocking::Client) -> Result<Usage, String> {
-    let token = credentials::read_token()?;
-    client
+pub enum FetchError {
+    RateLimited { retry_at: Option<DateTime<Utc>> },
+    Failed(String),
+}
+
+fn failed(error: reqwest::Error) -> FetchError {
+    FetchError::Failed(error.to_string())
+}
+
+fn retry_at(response: &Response) -> Option<DateTime<Utc>> {
+    let seconds: i64 = response.headers().get(RETRY_AFTER)?.to_str().ok()?.parse().ok()?;
+    Some(Utc::now() + TimeDelta::seconds(seconds))
+}
+
+pub fn fetch_usage(client: &reqwest::blocking::Client) -> Result<Usage, FetchError> {
+    let token = credentials::read_token().map_err(FetchError::Failed)?;
+    let response = client
         .get(USAGE_URL)
         .bearer_auth(token)
         .header("anthropic-beta", "oauth-2025-04-20")
         .send()
-        .and_then(|response| response.error_for_status())
+        .map_err(failed)?;
+    if response.status() == StatusCode::TOO_MANY_REQUESTS {
+        return Err(FetchError::RateLimited {
+            retry_at: retry_at(&response),
+        });
+    }
+    response
+        .error_for_status()
         .and_then(|response| response.json())
-        .map_err(|e| e.to_string())
+        .map_err(failed)
 }
